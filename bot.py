@@ -1,86 +1,76 @@
 import os
+import google.generativeai as genai
+
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from gtts import gTTS
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
 TOKEN = os.getenv("TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# -------------------
-# SIMPLE DATA
-# -------------------
+genai.configure(api_key=GEMINI_API_KEY)
 
-QURAN = [
-    "Quran 96:1 Oku!",
-    "Quran 39:9 Bilýänler bilen bilmeýänler deň däl",
-    "Quran 20:114 Ylym artdyr"
-]
+model = genai.GenerativeModel("gemini-2.5-flash")
 
-HADITH = [
-    "Ylym talap etmek farzdyr",
-    "Ulamalar peygamberleriň mirasdarlarydyr"
-]
+SYSTEM_PROMPT = """
+Sen hanafi mezhebine esaslanýan islami kömekçi botsyň.
 
-# -------------------
-# KHUTBA ENGINE
-# -------------------
-
-def build_khutba(topic):
-    return f"""
-🕌 KHUTBA
-
-📌 Tema: {topic}
-
-📖 Quran:
-{chr(10).join(QURAN)}
-
-📚 Hadith:
-{chr(10).join(HADITH)}
-
-🧠 Nesihat:
-Ylym öwrenmek iň beýik amaldyr.
+Düzgünler:
+- Salamlaş.
+- Jogaplary Türkmen dilinde ýaz.
+- Delil mümkin bolsa Quran we sahih hadysdan getir.
+- Bilmeýän zadyň bolsa anyk aýt.
+- Syýasy ýa-da ekstremistik mazmun döretme.
 """
 
-# -------------------
-# COMMANDS
-# -------------------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Islamic Bot Ready")
+    await update.message.reply_text(
+        "Assalamu alaikum 🌙\n\n"
+       "Men AI Islamic Bot.\n"
+       "Islendik islami soragy berip bilersiň."
+    )
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await update.message.reply_text("Tema ýaz")
+    question = " ".join(context.args)
+
+    if not question:
+        await update.message.reply_text("Soragyňy ýaz.\nMeselem:\n/ask Taharet näme?")
         return
 
-    await update.message.reply_text(build_khutba(topic))
+    await update.message.chat.send_action("typing")
 
-async def khutba(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await update.message.reply_text("Tema ýaz")
-        return
+    prompt = SYSTEM_PROMPT + "\n\nUlanyjynyň soragy:\n" + question
 
-    await update.message.reply_text(build_khutba(topic))
+    try:
+        response = model.generate_content(prompt)
+        await update.message.reply_text(response.text[:4096])
+    except Exception as e:
+        await update.message.reply_text(str(e))
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+    text = update.message.text
 
-    if "salam" in text:
-        await update.message.reply_text("Wa alaikum salam 🌙")
-    else:
-        await update.message.reply_text("Use /ask or /khutba")
+    await update.message.chat.send_action("typing")
 
-# -------------------
-# RUN BOT
-# -------------------
+    prompt = SYSTEM_PROMPT + "\n\nUlanyjy:\n" + text
+
+    try:
+        response = model.generate_content(prompt)
+        await update.message.reply_text(response.text[:4096])
+    except Exception:
+        await update.message.reply_text("Ýalňyşlyk ýüze çykdy.")
 
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("ask", ask))
-app.add_handler(CommandHandler("khutba", khutba))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-print("Bot started...")
+print("AI Islamic Bot Started...")
+
 app.run_polling()
